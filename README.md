@@ -383,7 +383,7 @@ docker run -p 3000:3000 --name komikcast-api komikcast-api
 
 | Variable | Default | Deskripsi |
 |----------|---------|-----------|
-| `PORT` | `3000` | Port server |
+| `PORT` | `3002` | Port server |
 
 ---
 
