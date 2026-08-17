@@ -15,6 +15,7 @@ API tidak resmi berbasis Node.js untuk [komikcast.app](https://komikcast.app) �
 - [Struktur Respons](#struktur-respons)
 - [Struktur Project](#struktur-project)
 - [Cara Kerja Scraper](#cara-kerja-scraper)
+- [Catatan Pencarian](#catatan-pencarian)
 - [Deployment](#deployment)
 
 ---
@@ -28,14 +29,16 @@ Komikcast API adalah layanan scraping yang mengekstrak data dari situs komikcast
 - **Daftar Manga** — Menampilkan semua manga dengan pagination (24 manga per halaman)
 - **Filter Tipe** — Filter berdasarkan tipe: `Manga`, `Manhwa`, atau `Manhua`
 - **Sortir** — Urutkan berdasarkan: `latest_update`, `popular`, `rating`, atau `title`
-- **Detail Manga** — Synopsis, genre, status, author, chapter list, dan manga terkait
+- **Filter Genre** — Filter berdasarkan slug genre (contoh: `action`, `fantasy`, `drama`)
+- **Detail Manga** — Synopsis, genre, status, author, chapter list, rank, dan manga terkait
 - **Baca Chapter** — Mengembalikan daftar URL gambar untuk setiap halaman chapter
 - **Navigasi Chapter** — Chapter sebelumnya dan selanjutnya
 - **Pencarian** — Cari manga berdasarkan judul
-- **Daftar Genre** — 102 genre tersedia
+- **Daftar Genre** — Daftar semua genre yang tersedia lengkap dengan ikon
 - **Rate Limiting** — Batas 60 request per menit
 - **Security Headers** — Helmet untuk keamanan HTTP
 - **CORS** — Cross-Origin Resource Sharing diaktifkan
+- **Kompresi Gzip** — Menggunakan compression untuk respons yang lebih ringan
 
 ## Teknologi
 
@@ -66,7 +69,7 @@ npm install
 # Mode produksi
 npm start
 
-# Mode development (auto-restart saat file berubah)
+# Mode development (auto-restart saat file berubah via --watch)
 npm run dev
 ```
 
@@ -105,54 +108,56 @@ PORT=8080 npm start
 | `q` | string | Ya | Kata kunci pencarian |
 | `page` | number | Tidak | Nomor halaman (default: `1`) |
 
+> **Catatan:** Endpoint `/search` menerima parameter `q` dari client, lalu meneruskannya sebagai parameter `search` ke komikcast.app. Hal ini karena komikcast menggunakan nama parameter `search` (bukan `q`) untuk pencarian manga.
+
 ## Contoh Penggunaan
 
 ### Daftar Manga (Default)
 
 ```bash
-curl http://localhost:3000/manga
+curl http://localhost:3002/manga
 ```
 
 ### Filter Manhwa dengan Sortir Popular
 
 ```bash
-curl "http://localhost:3000/manga?type=Manhwa&sort=popular"
+curl "http://localhost:3002/manga?type=Manhwa&sort=popular"
 ```
 
 ### Filter Genre Action, Halaman 2
 
 ```bash
-curl "http://localhost:3000/manga?genre=action&page=2"
+curl "http://localhost:3002/manga?genre=action&page=2"
 ```
 
 ### Sortir Berdasarkan Rating
 
 ```bash
-curl "http://localhost:3000/manga?sort=rating"
+curl "http://localhost:3002/manga?sort=rating"
 ```
 
 ### Detail Manga
 
 ```bash
-curl http://localhost:3000/manga/regressing-with-the-kings-power
+curl http://localhost:3002/manga/regressing-with-the-kings-power
 ```
 
 ### Baca Chapter 156
 
 ```bash
-curl http://localhost:3000/manga/regressing-with-the-kings-power/chapter/156
+curl http://localhost:3002/manga/regressing-with-the-kings-power/chapter/156
 ```
 
 ### Pencarian Manga
 
 ```bash
-curl "http://localhost:3000/search?q=regressing"
+curl "http://localhost:3002/search?q=regressing"
 ```
 
 ### Daftar Genre
 
 ```bash
-curl http://localhost:3000/genres
+curl http://localhost:3002/genres
 ```
 
 ## Struktur Respons
@@ -299,6 +304,52 @@ curl http://localhost:3000/genres
 }
 ```
 
+### Pencarian (`GET /search?q=keyword`)
+
+```json
+{
+  "status": "Ok",
+  "data": {
+    "query": "regressing",
+    "results": [
+      {
+        "id": 7524,
+        "title": "Regressing With The King's Power",
+        "slug": "regressing-with-the-kings-power",
+        "poster": "https://thumbnail.komiku.org/...",
+        "type": "Manhwa",
+        "status": "Ongoing",
+        "rating": null,
+        "release_year": 2026,
+        "author": "-",
+        "artist": "-",
+        "views_count": 1224,
+        "is_featured": false,
+        "synopsis": "Cerita ini mengikuti...",
+        "genres": [
+          { "id": 1, "name": "Action", "slug": "action" }
+        ],
+        "last_chapter": {
+          "id": 394586,
+          "title": "Chapter 156",
+          "chapter_number": 156,
+          "slug": "chapter-156",
+          "created_at": "2026-08-16T01:24:05.000000Z"
+        }
+      }
+    ],
+    "pagination": {
+      "current_page": 1,
+      "last_page": 1,
+      "per_page": 24,
+      "total": 1,
+      "has_next": false,
+      "has_prev": false
+    }
+  }
+}
+```
+
 ### Daftar Genre (`GET /genres`)
 
 ```json
@@ -317,11 +368,30 @@ curl http://localhost:3000/genres
 ```
 manga-api/
 ├── package.json          # Dependencies & scripts
-├── README.md             # Dokumentasi (file ini)
+├── README.md            # Dokumentasi (file ini)
 ├── src/
-│   ├── index.js          # Server Express & definisi route
-│   └── scraper.js        # Modul scraper (fetch & ekstraksi data Inertia.js)
+│   ├── index.js         # Server Express & definisi route
+│   └── scraper.js       # Modul scraper (fetch & ekstraksi data Inertia.js)
 ```
+
+### `src/index.js`
+
+Mendefinisikan server Express dengan middleware (helmet, cors, compression, morgan, rate-limit) dan 6 route endpoint. Setiap route menerima query parameter dari client, memanggil fungsi scraper yang sesuai, dan mengembalikan respons JSON.
+
+### `src/scraper.js`
+
+Berisi semua logika scraping. Fungsi utama:
+
+| Fungsi | Deskripsi |
+|--------|-----------|
+| `fetchPage(path)` | Fetch halaman komikcast, ekstrak & parse atribut `data-page` |
+| `mapMangaCard(m)` | Mapping raw manga object dari Inertia ke struktur API yang bersih |
+| `mapChapter(c)` | Mapping raw chapter object dari Inertia ke struktur API |
+| `getMangaList({ page, type, sort, genre })` | Daftar manga dengan filter & pagination |
+| `getMangaDetail(slug)` | Detail manga beserta chapters, rank, dan related mangas |
+| `getChapter(slug, chapterNumber)` | Baca chapter — daftar gambar + navigasi prev/next |
+| `searchManga(query, { page })` | Pencarian manga berdasarkan judul |
+| `getGenres()` | Daftar semua genre |
 
 ## Cara Kerja Scraper
 
@@ -342,9 +412,16 @@ const pageData = JSON.parse(dataPageAttr);
 ```
 
 Pendekatan ini memberikan keuntungan:
+
 - **Cepat** — tidak perlu menunggu render JavaScript
 - **Tahan perubahan UI** — tidak bergantung pada class CSS atau struktur DOM
 - **Data lengkap** — semua field database tersedia langsung di JSON
+
+## Catatan Pencarian
+
+Endpoint `/search?q=keyword` menerima parameter `q` dari client. Secara internal, scraper meneruskan kata kunci tersebut sebagai parameter `search` ke komikcast.app (`/manga?search=keyword`).
+
+> **Penting:** Komikcast menggunakan nama parameter `search` (bukan `q`) untuk melakukan pencarian manga. Jika parameter `q` digunakan langsung, komikcast akan mengabaikan query pencarian dan mengembalikan daftar manga default (sorted by latest update). Oleh karena itu, API ini melakukan translasi `q` → `search` secara otomatis di dalam `searchManga()`.
 
 ## Deployment
 
@@ -370,20 +447,20 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --production
 COPY . .
-EXPOSE 3000
+EXPOSE 3002
 CMD ["node", "src/index.js"]
 ```
 
 ```bash
 docker build -t komikcast-api .
-docker run -p 3000:3000 --name komikcast-api komikcast-api
+docker run -p 3002:3002 --name komikcast-api komikcast-api
 ```
 
 ### Environment Variables
 
 | Variable | Default | Deskripsi |
 |----------|---------|-----------|
-| `PORT` | `3000` | Port server |
+| `PORT` | `3002` | Port server |
 
 ---
 

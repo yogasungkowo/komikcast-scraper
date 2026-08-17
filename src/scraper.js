@@ -192,7 +192,7 @@ export async function getChapter(slug, chapterNumber) {
 
 export async function searchManga(query, { page = 1 } = {}) {
   const params = new URLSearchParams();
-  if (query) params.set("q", query);
+  if (query) params.set("search", query);
   if (page) params.set("page", String(page));
 
   const path = `/manga?${params.toString()}`;
