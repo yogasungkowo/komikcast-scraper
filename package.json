@@ -1,5 +1,5 @@
 {
-  "name": "komikcast-api",
+  "name": "yogasungkowo-komikcast-api",
   "version": "1.0.0",
   "description": "Unofficial Komikcast API built with Node.js scraper",
   "main": "src/index.js",
