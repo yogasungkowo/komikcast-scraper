@@ -10,6 +10,7 @@ import {
   getChapter,
   searchManga,
   getGenres,
+  getRanking,
   BASE_URL,
 } from "./scraper.js";
 
@@ -37,35 +38,111 @@ app.use(limiter);
 app.get("/", (req, res) => {
   res.json({
     status: "Ok",
-    message: "Komikcast API",
-    base_url: BASE_URL,
+    message: "Komikcast API (v1.komikcast.ac)",
+    source: BASE_URL,
     endpoints: {
-      "GET /manga": "List all manga (optional: ?page=1&type=Manhwa&sort=latest_update&genre=action)",
-      "GET /manga/:slug": "Manga detail with chapters",
-      "GET /manga/:slug/chapter/:number": "Read chapter with images",
-      "GET /search?q=keyword": "Search manga",
-      "GET /genres": "List all genres",
+      "GET /explore":
+        "Explore manga with filters (query: page, genre, type, status, order, search)",
+      "GET /manga":
+        "Alias to /explore (query: page, genre, type, status, order, sort, search)",
+      "GET /ranking":
+        "Manga rankings (optional query: period=daily|weekly|monthly|all)",
+      "GET /manga/:slug":
+        "Manga detail with chapter list (e.g. /manga/tales-demons-gods)",
+      "GET /manga/:slug/:chapterSlug":
+        "Read chapter by chapter slug (e.g. /manga/tales-demons-gods/tales-of-demons-and-gods-chapter-1)",
+      "GET /manga/:slug/chapter/:chapter":
+        "Read chapter by chapter number or slug (e.g. /manga/tales-demons-gods/chapter/1)",
+      "GET /search?q=keyword":
+        "Search manga (alias to /explore?search=keyword)",
+      "GET /genres": "List all 140+ manga genres",
     },
-    sort_options: ["latest_update", "popular", "rating", "title"],
-    type_options: ["Manga", "Manhwa", "Manhua"],
+    filter_options: {
+      type: ["manga", "manhwa", "manhua"],
+      status: ["ongoing", "completed"],
+      order: ["update", "latest", "popular", "title"],
+      genre_example: "shoujo-ai,action",
+    },
+    curl_examples: [
+      `curl "http://localhost:${PORT}/explore?genre=shoujo-ai,action&type=manga&status=ongoing&order=update"`,
+      `curl "http://localhost:${PORT}/ranking"`,
+      `curl "http://localhost:${PORT}/manga/tales-demons-gods"`,
+      `curl "http://localhost:${PORT}/manga/tales-demons-gods/tales-of-demons-and-gods-chapter-1"`,
+      `curl "http://localhost:${PORT}/manga/tales-demons-gods/chapter/1"`,
+    ],
   });
 });
 
-app.get("/manga", async (req, res) => {
+async function handleMangaList(req, res) {
   try {
-    const { page, type, sort, genre } = req.query;
+    const { page, type, sort, order, genre, status, search, q } = req.query;
     const result = await getMangaList({
       page: page ? parseInt(page, 10) : 1,
       type: type || undefined,
-      sort: sort || undefined,
+      order: order || sort || undefined,
       genre: genre || undefined,
+      status: status || undefined,
+      search: search || q || undefined,
     });
     res.json(result);
   } catch (err) {
-    console.error("[/manga]", err.message);
+    console.error("[handleMangaList]", err.message);
     res.status(502).json({
       status: "Error",
       message: "Failed to fetch manga list",
+      error: err.message,
+    });
+  }
+}
+
+app.get("/explore", handleMangaList);
+app.get("/manga", handleMangaList);
+
+app.get("/ranking", async (req, res) => {
+  try {
+    res.json(await getRanking(req.query.period));
+  } catch (err) {
+    console.error("[/ranking]", err.message);
+    res.status(502).json({
+      status: "Error",
+      message: "Failed to fetch ranking",
+      error: err.message,
+    });
+  }
+});
+
+app.get("/genres", async (req, res) => {
+  try {
+    const result = await getGenres();
+    res.json(result);
+  } catch (err) {
+    console.error("[/genres]", err.message);
+    res.status(502).json({
+      status: "Error",
+      message: "Failed to fetch genres",
+      error: err.message,
+    });
+  }
+});
+
+app.get("/search", async (req, res) => {
+  try {
+    const query = req.query.q || req.query.search;
+    if (!query) {
+      return res.status(400).json({
+        status: "Error",
+        message: "Query parameter 'q' or 'search' is required",
+      });
+    }
+    const result = await searchManga(query, {
+      page: req.query.page ? parseInt(req.query.page, 10) : 1,
+    });
+    res.json(result);
+  } catch (err) {
+    console.error("[/search]", err.message);
+    res.status(502).json({
+      status: "Error",
+      message: "Failed to search manga",
       error: err.message,
     });
   }
@@ -87,13 +164,13 @@ app.get("/manga/:slug", async (req, res) => {
   }
 });
 
-app.get("/manga/:slug/chapter/:number", async (req, res) => {
+app.get("/manga/:slug/chapter/:chapter", async (req, res) => {
   try {
-    const { slug, number } = req.params;
-    const result = await getChapter(slug, number);
+    const { slug, chapter } = req.params;
+    const result = await getChapter(slug, chapter);
     res.json(result);
   } catch (err) {
-    console.error("[/manga/:slug/chapter/:number]", err.message);
+    console.error("[/manga/:slug/chapter/:chapter]", err.message);
     const status = err.response?.status || 502;
     res.status(status === 404 ? 404 : 502).json({
       status: "Error",
@@ -103,38 +180,17 @@ app.get("/manga/:slug/chapter/:number", async (req, res) => {
   }
 });
 
-app.get("/search", async (req, res) => {
+app.get("/manga/:slug/:chapterSlug", async (req, res) => {
   try {
-    const { q, page } = req.query;
-    if (!q) {
-      return res.status(400).json({
-        status: "Error",
-        message: "Query parameter 'q' is required",
-      });
-    }
-    const result = await searchManga(q, {
-      page: page ? parseInt(page, 10) : 1,
-    });
+    const { slug, chapterSlug } = req.params;
+    const result = await getChapter(slug, chapterSlug);
     res.json(result);
   } catch (err) {
-    console.error("[/search]", err.message);
-    res.status(502).json({
+    console.error("[/manga/:slug/:chapterSlug]", err.message);
+    const status = err.response?.status || 502;
+    res.status(status === 404 ? 404 : 502).json({
       status: "Error",
-      message: "Failed to search manga",
-      error: err.message,
-    });
-  }
-});
-
-app.get("/genres", async (req, res) => {
-  try {
-    const result = await getGenres();
-    res.json(result);
-  } catch (err) {
-    console.error("[/genres]", err.message);
-    res.status(502).json({
-      status: "Error",
-      message: "Failed to fetch genres",
+      message: status === 404 ? "Chapter not found" : "Failed to fetch chapter",
       error: err.message,
     });
   }
@@ -155,6 +211,8 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`Komikcast API running on http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Komikcast API running on http://0.0.0.0:${PORT}`);
 });
+
+export default app;

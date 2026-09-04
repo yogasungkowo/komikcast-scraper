@@ -1,168 +1,257 @@
 # Komikcast API
 
-API tidak resmi berbasis Node.js untuk [komikcast.app](https://komikcast.app) — melakukan scraping data JSON Inertia.js yang tertanam di halaman dan menyajikannya sebagai REST API yang bersih.
+REST API tidak resmi berbasis Node.js untuk scraping dan menyajikan data dari [v1.komikcast.ac](https://v1.komikcast.ac/). Mendukung filter explore, ranking komik, detail manga lengkap dengan daftar chapter, reader gambar komik, pencarian, dan daftar genre.
 
-## Daftar Isi
-
-- [Tentang](#tentang)
-- [Fitur](#fitur)
-- [Teknologi](#teknologi)
-- [Instalasi](#instalasi)
-- [Cara Menjalankan](#cara-menjalankan)
-- [Endpoint API](#endpoint-api)
-- [Parameter Query](#parameter-query)
-- [Contoh Penggunaan](#contoh-penggunaan)
-- [Struktur Respons](#struktur-respons)
-- [Struktur Project](#struktur-project)
-- [Cara Kerja Scraper](#cara-kerja-scraper)
-- [Catatan Pencarian](#catatan-pencarian)
-- [Deployment](#deployment)
+Dilengkapi panduan cUrl lengkap untuk terminal Windows (PowerShell & Command Prompt) serta Linux/macOS.
 
 ---
 
-## Tentang
+## Daftar Isi
 
-Komikcast API adalah layanan scraping yang mengekstrak data dari situs komikcast.app dan membungkusnya menjadi API REST. Scraper tidak memparsing HTML yang sudah dirender melainkan mengekstrak payload JSON dari atribut `data-page` pada elemen `#app` (Inertia.js), sehingga lebih cepat dan tahan terhadap perubahan tampilan UI.
+1. [Sumber Data (v1.komikcast.ac)](#sumber-data-v1komikcastac)
+2. [Fitur Utama](#fitur-utama)
+3. [Teknologi & Stack](#teknologi--stack)
+4. [Instalasi & Menjalankan](#instalasi--menjalankan)
+5. [Daftar Endpoint API](#daftar-endpoint-api)
+6. [Parameter Query](#parameter-query)
+7. [Panduan cUrl di Terminal Windows](#panduan-curl-di-terminal-windows)
+   - [Windows PowerShell](#windows-powershell)
+   - [Windows Command Prompt (CMD)](#windows-command-prompt-cmd)
+   - [Linux / macOS (Bash / Zsh)](#linux--macos-bash--zsh)
+8. [Contoh Pemanggilan cUrl per Kasus](#contoh-pemanggilan-curl-per-kasus)
+   - [1. Explore Komik (Genre, Tipe, Status, Urutan)](#1-explore-komik)
+   - [2. Ranking Komik](#2-ranking-komik)
+   - [3. Detail Komik](#3-detail-komik)
+   - [4. Baca Chapter Komik](#4-baca-chapter-komik)
+   - [5. Pencarian Manga](#5-pencarian-manga)
+   - [6. Daftar Genre](#6-daftar-genre)
+9. [Struktur Respons JSON](#struktur-respons-json)
+10. [Error Handling & Status Code](#error-handling--status-code)
+11. [Testing](#testing)
+12. [Deployment (PM2 & Docker)](#deployment-pm2--docker)
 
-## Fitur
+---
 
-- **Daftar Manga** — Menampilkan semua manga dengan pagination (24 manga per halaman)
-- **Filter Tipe** — Filter berdasarkan tipe: `Manga`, `Manhwa`, atau `Manhua`
-- **Sortir** — Urutkan berdasarkan: `latest_update`, `popular`, `rating`, atau `title`
-- **Filter Genre** — Filter berdasarkan slug genre (contoh: `action`, `fantasy`, `drama`)
-- **Detail Manga** — Synopsis, genre, status, author, chapter list, rank, dan manga terkait
-- **Baca Chapter** — Mengembalikan daftar URL gambar untuk setiap halaman chapter
-- **Navigasi Chapter** — Chapter sebelumnya dan selanjutnya
-- **Pencarian** — Cari manga berdasarkan judul
-- **Daftar Genre** — Daftar semua genre yang tersedia lengkap dengan ikon
-- **Rate Limiting** — Batas 60 request per menit
-- **Security Headers** — Helmet untuk keamanan HTTP
-- **CORS** — Cross-Origin Resource Sharing diaktifkan
-- **Kompresi Gzip** — Menggunakan compression untuk respons yang lebih ringan
+## Sumber Data (v1.komikcast.ac)
 
-## Teknologi
+API ini mengambil data secara langsung dari situs versi baru Komikcast:
 
-| Library | Fungsi |
-|---------|--------|
-| [Express](https://expressjs.com/) | Framework HTTP server |
-| [Axios](https://axios-http.com/) | HTTP client untuk fetching halaman |
-| [Cheerio](https://cheerio.js.org/) | Parsing HTML & ekstraksi atribut `data-page` |
-| [Helmet](https://helmetjs.github.io/) | Security headers |
-| [express-rate-limit](https://express-rate-limit.mintlify.app/) | Rate limiting |
-| [Compression](https://github.com/expressjs/compression) | Kompresi gzip |
-| [Morgan](https://github.com/expressjs/morgan) | HTTP request logging |
-| [CORS](https://github.com/expressjs/cors) | Cross-Origin Resource Sharing |
+| Fitur | URL Sumber | Deskripsi |
+|---|---|---|
+| **Explore & Filter** | `https://v1.komikcast.ac/explore?genre=shoujo-ai%2Caction&type=manga&status=ongoing&order=update` | Katalog komik dengan multi-filter |
+| **Ranking** | `https://v1.komikcast.ac/ranking` | Peringkat komik terpopuler harian/mingguan/bulanan |
+| **Detail Komik** | `https://v1.komikcast.ac/manga/tales-demons-gods` | Profil komik dan seluruh daftar chapter |
+| **Baca Chapter** | `https://v1.komikcast.ac/manga/tales-demons-gods/tales-of-demons-and-gods-chapter-1` | Halaman baca gambar per chapter |
 
-## Instalasi
+---
 
+## Fitur Utama
+
+- **Filter Explore Lengkap**:
+  - **Genre**: Mendukung multi-genre (contoh: `shoujo-ai,action` atau `shoujo-ai%2Caction`).
+  - **Tipe**: `manga`, `manhwa`, `manhua`.
+  - **Status**: `ongoing` (berjalan), `completed` (tamat).
+  - **Urutan (Order)**: `update` (baru diupdate), `latest` (terbaru), `popular` (terpopuler), `title` (A-Z).
+  - **Pencarian**: Mendukung query pencarian judul di halaman explore.
+  - **Pagination**: Informasi `current_page`, `last_page`, `has_next`, `next_page`, `has_prev`, `prev_page`.
+- **Ranking Komik**: Menampilkan peringkat, rating, pengarang (author), views (contoh: `1.3K`), dan status.
+- **Detail Komik Komprehensif**: Judul, subtitle (nama alternatif), sampul poster beresolusi tinggi, ranking badge, pengarang, tipe, genre, sinopsis, tombol baca pertama (`first_chapter`), tombol baca terbaru (`latest_chapter`), dan seluruh chapter (deduplikasi rapi).
+- **Reader Chapter**: Menampilkan seluruh tautan gambar per halaman yang diurutkan (`order: 1`, `2`, dst.), tautan `prev_url`, `next_url`, serta `series_url`.
+- **Dukungan URL Fleksibel**:
+  - Baca via slug asli: `/manga/:slug/:chapterSlug` (contoh: `/manga/tales-demons-gods/tales-of-demons-and-gods-chapter-1`).
+  - Baca via nomor chapter: `/manga/:slug/chapter/:chapter` (contoh: `/manga/tales-demons-gods/chapter/1` atau `/manga/tales-demons-gods/chapter/529.1`).
+- **Daftar Genre Lengkap**: Mengekstrak otomatis 140+ genre komik yang tersedia.
+- **Production Ready**: Security headers (Helmet), kompresi gzip (Compression), CORS diaktifkan, dan Rate Limiter (60 req/menit).
+
+---
+
+## Teknologi & Stack
+
+- **Runtime**: Node.js (ESM Module)
+- **Framework**: Express.js 4.x
+- **Scraper / Parser**: Axios & Cheerio
+- **Keamanan & Utilitas**: Helmet, Cors, Compression, Express-Rate-Limit, Morgan
+
+---
+
+## Instalasi & Menjalankan
+
+### Persyaratan
+- Node.js versi 18 ke atas (direkomendasikan versi 20 atau 22 LTS).
+
+### Langkah-langkah
 ```bash
-# Clone atau masuk ke direktori project
+# 1. Clone repository atau buka folder project
 cd manga-api
 
-# Install dependencies
+# 2. Pasang dependencies
 npm install
+
+# 3. Jalankan server
+npm start
 ```
 
-## Cara Menjalankan
+Server default berjalan pada port `3002`: `http://localhost:3002` (atau `http://127.0.0.1:3002`).
 
+Untuk development dengan auto-reload saat file diedit:
 ```bash
-# Mode produksi
-npm start
-
-# Mode development (auto-restart saat file berubah via --watch)
 npm run dev
 ```
 
-Server berjalan di `http://localhost:3002`. Port dapat diubah dengan environment variable:
-
+Mengubah port server:
 ```bash
+# Di Windows PowerShell:
+$env:PORT="8080"; npm start
+
+# Di Windows CMD:
+set PORT=8080 && npm start
+
+# Di Linux / macOS:
 PORT=8080 npm start
 ```
 
-## Endpoint API
+---
+
+## Daftar Endpoint API
 
 | Method | Endpoint | Deskripsi |
-|--------|----------|-----------|
-| `GET` | `/` | Informasi API dan daftar endpoint |
-| `GET` | `/manga` | Daftar manga dengan pagination, filter, dan sort |
-| `GET` | `/manga/:slug` | Detail manga beserta daftar chapter |
-| `GET` | `/manga/:slug/chapter/:number` | Membaca chapter — mengembalikan URL gambar |
-| `GET` | `/search?q=keyword` | Mencari manga berdasarkan judul |
-| `GET` | `/genres` | Daftar semua genre yang tersedia |
+|---|---|---|
+| `GET` | `/` | Informasi API, daftar route, opsi filter, dan contoh cUrl |
+| `GET` | `/explore` | Filter dan telusuri komik |
+| `GET` | `/manga` | Alias ke `/explore` |
+| `GET` | `/ranking` | Daftar peringkat komik terpopuler |
+| `GET` | `/manga/:slug` | Detail informasi komik dan seluruh chapter |
+| `GET` | `/manga/:slug/:chapterSlug` | Membaca chapter menggunakan chapter slug asli |
+| `GET` | `/manga/:slug/chapter/:chapter` | Membaca chapter menggunakan nomor atau slug |
+| `GET` | `/search?q=keyword` | Mencari komik berdasarkan kata kunci |
+| `GET` | `/genres` | Daftar seluruh 140+ genre komik |
+
+---
 
 ## Parameter Query
 
-### `/manga`
+### Endpoint `/explore` & `/manga`
 
-| Parameter | Tipe | Wajib | Deskripsi |
-|-----------|------|-------|-----------|
-| `page` | number | Tidak | Nomor halaman (default: `1`) |
-| `type` | string | Tidak | Tipe manga: `Manga`, `Manhwa`, atau `Manhua` |
-| `sort` | string | Tidak | Sortir berdasarkan: `latest_update`, `popular`, `rating`, atau `title` |
-| `genre` | string | Tidak | Slug genre (contoh: `action`, `fantasy`, `drama`) |
+| Parameter | Tipe | Wajib | Pilihan / Format | Deskripsi |
+|---|---|---|---|---|
+| `page` | Integer | Tidak | `1`, `2`, `3`, dst. (default: `1`) | Nomor halaman |
+| `genre` | String | Tidak | `action`, `shoujo-ai,action` | Satu atau lebih slug genre (dipisahkan koma) |
+| `type` | String | Tidak | `manga`, `manhwa`, `manhua` | Tipe komik |
+| `status` | String | Tidak | `ongoing` (berjalan), `completed` (tamat) | Status penerbitan komik |
+| `order` / `sort` | String | Tidak | `update`, `latest`, `popular`, `title` | Urutan penyajian |
+| `search` / `q` | String | Tidak | Kata kunci pencarian (misal: `tales`) | Cari judul manga |
 
-### `/search`
+### Endpoint `/ranking`
 
-| Parameter | Tipe | Wajib | Deskripsi |
-|-----------|------|-------|-----------|
-| `q` | string | Ya | Kata kunci pencarian |
-| `page` | number | Tidak | Nomor halaman (default: `1`) |
+| Parameter | Tipe | Wajib | Pilihan Nilai |
+|---|---|---|---|
+| `period` | String | Tidak | `daily` (default), `weekly`, `monthly`, `all` |
 
-> **Catatan:** Endpoint `/search` menerima parameter `q` dari client, lalu meneruskannya sebagai parameter `search` ke komikcast.app. Hal ini karena komikcast menggunakan nama parameter `search` (bukan `q`) untuk pencarian manga.
+---
 
-## Contoh Penggunaan
+## Panduan cUrl di Terminal Windows
 
-### Daftar Manga (Default)
+### Windows PowerShell
 
-```bash
-curl http://localhost:3002/manga
+1. **Gunakan `curl.exe`**: Pada PowerShell standar, perintah `curl` merupakan alias bawaan untuk cmdlet `Invoke-WebRequest`. Gunakan `curl.exe` agar mengeksekusi biner curl asli.
+2. **Kutip URL Ganda (`"..."`)**: Karakter `&` di PowerShell dianggap sebagai statement separator atau call operator jika tidak dikutip.
+3. **Gunakan Host `127.0.0.1` atau `localhost`**: `http://127.0.0.1:3002` lebih direkomendasikan untuk menghindari resolusi IPv6 `::1`.
+
+Contoh PowerShell:
+```powershell
+curl.exe -s "http://127.0.0.1:3002/explore?genre=shoujo-ai,action&type=manga&status=ongoing&order=update"
 ```
 
-### Filter Manhwa dengan Sortir Popular
+### Windows Command Prompt (CMD)
 
-```bash
-curl "http://localhost:3002/manga?type=Manhwa&sort=popular"
+Di CMD, gunakan kutip dua `""` untuk parameter URL yang mengandung `&`:
+```cmd
+curl.exe -s "http://127.0.0.1:3002/explore?genre=shoujo-ai,action&type=manga&status=ongoing&order=update"
 ```
 
-### Filter Genre Action, Halaman 2
+### Linux / macOS (Bash / Zsh)
 
 ```bash
-curl "http://localhost:3002/manga?genre=action&page=2"
+curl -s "http://127.0.0.1:3002/explore?genre=shoujo-ai,action&type=manga&status=ongoing&order=update"
 ```
 
-### Sortir Berdasarkan Rating
+---
 
-```bash
-curl "http://localhost:3002/manga?sort=rating"
-```
+## Contoh Pemanggilan cUrl per Kasus
 
-### Detail Manga
+### 1. Explore Komik
 
-```bash
-curl http://localhost:3002/manga/regressing-with-the-kings-power
-```
+Mengambil daftar komik bergenre *shoujo-ai* dan *action*, tipe *manga*, status *ongoing*, diurutkan berdasarkan *update*:
 
-### Baca Chapter 156
+- **Ke API lokal:**
+  ```powershell
+  curl.exe -s "http://127.0.0.1:3002/explore?genre=shoujo-ai,action&type=manga&status=ongoing&order=update"
+  ```
+- **Langsung ke situs v1.komikcast.ac:**
+  ```powershell
+  curl.exe -s "https://v1.komikcast.ac/explore?genre=shoujo-ai%2Caction&type=manga&status=ongoing&order=update"
+  ```
 
-```bash
-curl http://localhost:3002/manga/regressing-with-the-kings-power/chapter/156
-```
+### 2. Ranking Komik
 
-### Pencarian Manga
+- **Ke API lokal:**
+  ```powershell
+  curl.exe -s "http://127.0.0.1:3002/ranking"
+  ```
+- **Langsung ke sumber:**
+  ```powershell
+  curl.exe -s "https://v1.komikcast.ac/ranking"
+  ```
 
-```bash
-curl "http://localhost:3002/search?q=regressing"
-```
+### 3. Detail Komik
 
-### Daftar Genre
+Melihat informasi komik *Tales of Demons and Gods*:
 
-```bash
-curl http://localhost:3002/genres
-```
+- **Ke API lokal:**
+  ```powershell
+  curl.exe -s "http://127.0.0.1:3002/manga/tales-demons-gods"
+  ```
+- **Langsung ke sumber:**
+  ```powershell
+  curl.exe -s "https://v1.komikcast.ac/manga/tales-demons-gods"
+  ```
 
-## Struktur Respons
+### 4. Baca Chapter Komik
 
-### Daftar Manga (`GET /manga`)
+Membaca Chapter 1 dari *Tales of Demons and Gods*:
+
+- **Ke API lokal (format slug asli):**
+  ```powershell
+  curl.exe -s "http://127.0.0.1:3002/manga/tales-demons-gods/tales-of-demons-and-gods-chapter-1"
+  ```
+- **Ke API lokal (format nomor chapter):**
+  ```powershell
+  curl.exe -s "http://127.0.0.1:3002/manga/tales-demons-gods/chapter/1"
+  ```
+- **Langsung ke sumber:**
+  ```powershell
+  curl.exe -s "https://v1.komikcast.ac/manga/tales-demons-gods/tales-of-demons-and-gods-chapter-1"
+  ```
+
+### 5. Pencarian Manga
+
+- **Berdasarkan kata kunci:**
+  ```powershell
+  curl.exe -s "http://127.0.0.1:3002/search?q=tales"
+  ```
+
+### 6. Daftar Genre
+
+- **Mendapatkan daftar semua genre:**
+  ```powershell
+  curl.exe -s "http://127.0.0.1:3002/genres"
+  ```
+
+---
+
+## Struktur Respons JSON
+
+### A. Explore (`GET /explore`)
 
 ```json
 {
@@ -170,298 +259,200 @@ curl http://localhost:3002/genres
   "data": {
     "mangas": [
       {
-        "id": 3156,
-        "title": "When Trying to Get Back at the Hometown Bullies...",
-        "slug": "when-trying-to-get-back-at-the-hometown-bullies...",
-        "poster": "https://thumbnail.komiku.org/uploads/manga/.../manga_thumbnail-....jpg?w=500",
-        "type": "Manga",
-        "status": "Ongoing",
-        "rating": null,
-        "release_year": 2026,
-        "author": "-",
-        "artist": "-",
-        "views_count": 980,
-        "is_featured": false,
-        "synopsis": "Cerita ini mengisahkan...",
-        "genres": [
-          { "id": 3, "name": "Comedy", "slug": "comedy" }
-        ],
-        "last_chapter": {
-          "id": 394589,
-          "title": "Chapter 78",
-          "chapter_number": 78,
-          "slug": "chapter-78",
-          "created_at": "2026-08-16T01:24:05.000000Z"
-        }
+        "title": "Ah, It’s Wonderful To Be Alive",
+        "slug": "ah-its-wonderful-to-be-alive",
+        "poster": "https://thumbnail.komiku.org/uploads/manga/ah-its-wonderful-to-be-alive/manga_thumbnail-A2-Ah-Its-Wonderful-To-Be-Alive.jpg?w=500",
+        "type": "Manga"
       }
     ],
     "pagination": {
       "current_page": 1,
-      "last_page": 314,
-      "per_page": 24,
-      "total": 7526,
-      "from": 1,
-      "to": 24,
+      "last_page": 286,
       "has_next": true,
-      "has_prev": false,
       "next_page": 2,
+      "has_prev": false,
       "prev_page": null
     },
-    "filters": {},
-    "genres": [
-      { "id": 1, "name": "Action", "slug": "action", "icon": "⚔️" }
-    ]
-  }
-}
-```
-
-### Detail Manga (`GET /manga/:slug`)
-
-```json
-{
-  "status": "Ok",
-  "data": {
-    "id": 7524,
-    "title": "Regressing With The King's Power",
-    "slug": "regressing-with-the-kings-power",
-    "poster": "https://thumbnail.komiku.org/uploads/manga/.../manga_thumbnail-....jpg?w=500",
-    "type": "Manhwa",
-    "status": "Ongoing",
-    "rating": null,
-    "release_year": 2026,
-    "author": "-",
-    "artist": "-",
-    "views_count": 1224,
-    "is_featured": false,
-    "synopsis": "Cerita ini mengikuti perjalanan...",
-    "source_url": "https://komiku.org/manga/regressing-with-the-kings-power/",
-    "genres": [
-      { "id": 1, "name": "Action", "slug": "action", "icon": "⚔️" }
-    ],
-    "chapters": [
-      {
-        "id": 394586,
-        "title": "Chapter 156",
-        "slug": "chapter-156",
-        "chapter_number": 156,
-        "source_url": "https://komiku.org/regressing-with-the-kings-power-chapter-156/",
-        "views_count": 50,
-        "created_at": "2026-08-16T01:24:03.000000Z",
-        "updated_at": "2026-08-16T19:16:06.000000Z"
-      }
-    ],
-    "manga_rank": 793,
-    "total_raters": 445,
-    "first_chapter": {
-      "id": 392668,
-      "title": "Chapter 1",
-      "slug": "chapter-1",
-      "chapter_number": 1
-    },
-    "related_mangas": []
-  }
-}
-```
-
-### Baca Chapter (`GET /manga/:slug/chapter/:number`)
-
-```json
-{
-  "status": "Ok",
-  "data": {
-    "manga": {
-      "id": 7524,
-      "title": "Regressing With The King's Power",
-      "slug": "regressing-with-the-kings-power",
-      "poster": "https://thumbnail.komiku.org/...",
-      "type": "Manhwa"
-    },
-    "chapter": {
-      "id": 394586,
-      "title": "Chapter 156",
-      "slug": "chapter-156",
-      "chapter_number": 156,
-      "views_count": 50,
-      "created_at": "2026-08-16T01:24:03.000000Z",
-      "updated_at": "2026-08-16T19:16:06.000000Z",
-      "source_url": "https://komiku.org/regressing-with-the-kings-power-chapter-156/",
-      "images": [
-        { "id": 16051295, "order": 0, "url": "https://img.komiku.org/cover/wmkomiku2.webp" },
-        { "id": 16051296, "order": 1, "url": "https://img.komiku.org/upload5/regressing-with-the-king-s-power/156/2026-08-15/1.webp" }
-      ]
-    },
-    "prev": {
-      "id": 394274,
-      "title": "Chapter 155",
-      "slug": "chapter-155",
-      "chapter_number": 155
-    },
-    "next": null,
-    "all_chapters": [
-      { "id": 394586, "title": "Chapter 156", "slug": "chapter-156", "chapter_number": 156 }
-    ]
-  }
-}
-```
-
-### Pencarian (`GET /search?q=keyword`)
-
-```json
-{
-  "status": "Ok",
-  "data": {
-    "query": "regressing",
-    "results": [
-      {
-        "id": 7524,
-        "title": "Regressing With The King's Power",
-        "slug": "regressing-with-the-kings-power",
-        "poster": "https://thumbnail.komiku.org/...",
-        "type": "Manhwa",
-        "status": "Ongoing",
-        "rating": null,
-        "release_year": 2026,
-        "author": "-",
-        "artist": "-",
-        "views_count": 1224,
-        "is_featured": false,
-        "synopsis": "Cerita ini mengikuti...",
-        "genres": [
-          { "id": 1, "name": "Action", "slug": "action" }
-        ],
-        "last_chapter": {
-          "id": 394586,
-          "title": "Chapter 156",
-          "chapter_number": 156,
-          "slug": "chapter-156",
-          "created_at": "2026-08-16T01:24:05.000000Z"
-        }
-      }
-    ],
-    "pagination": {
-      "current_page": 1,
-      "last_page": 1,
-      "per_page": 24,
-      "total": 1,
-      "has_next": false,
-      "has_prev": false
+    "filters": {
+      "page": 1,
+      "type": "manga",
+      "status": "ongoing",
+      "order": "update",
+      "genre": "shoujo-ai,action",
+      "search": null
     }
   }
 }
 ```
 
-### Daftar Genre (`GET /genres`)
+### B. Ranking (`GET /ranking`)
+
+```json
+{
+  "status": "Ok",
+  "data": {
+    "rankings": [
+      {
+        "rank": 1,
+        "title": "Tales of Demons and Gods",
+        "slug": "tales-demons-gods",
+        "poster": "https://thumbnail.komiku.org/uploads/manga/tales-demons-gods/manga_thumbnail-Komik-Tales-of-Demons-and-Gods.jpg?w=500",
+        "rating": 5,
+        "author": "Mad Snail",
+        "type": "Manhua",
+        "status": "Ongoing",
+        "views": "1.3K"
+      }
+    ],
+    "period": "daily"
+  }
+}
+```
+
+### C. Detail Manga (`GET /manga/:slug`)
+
+```json
+{
+  "status": "Ok",
+  "data": {
+    "title": "Tales of Demons and Gods",
+    "slug": "tales-demons-gods",
+    "subtitle": "Kisah Para Dewa dan Iblis",
+    "poster": "https://thumbnail.komiku.org/uploads/manga/tales-demons-gods/manga_thumbnail-Komik-Tales-of-Demons-and-Gods.jpg?w=500",
+    "rank": 1,
+    "author": "Mad Snail",
+    "type": "Manhua",
+    "status": "Ongoing",
+    "genres": ["Fantasi"],
+    "synopsis": "Nie Li, Spiritualis Iblis terkuat di kehidupannya yang lalu...",
+    "total_chapters": 980,
+    "first_chapter": {
+      "slug": "tales-of-demons-and-gods-chapter-1",
+      "url": "/manga/tales-demons-gods/tales-of-demons-and-gods-chapter-1"
+    },
+    "latest_chapter": {
+      "slug": "tales-of-demons-and-gods-chapter-529-1",
+      "url": "/manga/tales-demons-gods/tales-of-demons-and-gods-chapter-529-1"
+    },
+    "chapters": [
+      {
+        "number": 529.1,
+        "title": "Chapter 529.1",
+        "slug": "tales-of-demons-and-gods-chapter-529-1",
+        "date": "3 Sep 2026, 15.17 WIB",
+        "url": "/manga/tales-demons-gods/tales-of-demons-and-gods-chapter-529-1"
+      },
+      {
+        "number": 1,
+        "title": "Chapter 1",
+        "slug": "tales-of-demons-and-gods-chapter-1",
+        "date": "26 Feb 2026, 08.15 WIB",
+        "url": "/manga/tales-demons-gods/tales-of-demons-and-gods-chapter-1"
+      }
+    ]
+  }
+}
+```
+
+### D. Baca Chapter (`GET /manga/:slug/:chapterSlug`)
+
+```json
+{
+  "status": "Ok",
+  "data": {
+    "title": "Tales of Demons and Gods Chapter 1",
+    "manga_slug": "tales-demons-gods",
+    "chapter_slug": "tales-of-demons-and-gods-chapter-1",
+    "chapter_number": 1,
+    "images": [
+      {
+        "order": 1,
+        "url": "https://img.komiku.org/wp-content/uploads/46187-1.jpg"
+      },
+      {
+        "order": 2,
+        "url": "https://img.komiku.org/wp-content/uploads/46187-2.jpg"
+      }
+    ],
+    "prev_url": null,
+    "next_url": "/manga/tales-demons-gods/tales-of-demons-and-gods-chapter-2",
+    "series_url": "/manga/tales-demons-gods"
+  }
+}
+```
+
+### E. Daftar Genre (`GET /genres`)
 
 ```json
 {
   "status": "Ok",
   "data": [
-    { "id": 1, "name": "Action", "slug": "action", "icon": "⚔️" },
-    { "id": 2, "name": "Adventure", "slug": "adventure", "icon": "🏔️" },
-    { "id": 3, "name": "Comedy", "slug": "comedy", "icon": "😂" }
+    { "name": "Action", "slug": "action" },
+    { "name": "Adventure", "slug": "adventure" },
+    { "name": "Shoujo Ai", "slug": "shoujo-ai" }
   ]
 }
 ```
 
-## Struktur Project
+---
 
-```
-manga-api/
-├── package.json          # Dependencies & scripts
-├── README.md            # Dokumentasi (file ini)
-├── src/
-│   ├── index.js         # Server Express & definisi route
-│   └── scraper.js       # Modul scraper (fetch & ekstraksi data Inertia.js)
-```
+## Error Handling & Status Code
 
-### `src/index.js`
+| Status Code | Kondisi | Contoh Format JSON |
+|---|---|---|
+| `200 OK` | Request berhasil | `{"status": "Ok", "data": { ... }}` |
+| `400 Bad Request` | Query wajib belum disertakan (misal: parameter `q` pada `/search`) | `{"status": "Error", "message": "Query parameter 'q' or 'search' is required"}` |
+| `404 Not Found` | Manga atau chapter tidak ditemukan | `{"status": "Error", "message": "Manga not found"}` |
+| `429 Too Many Requests` | Melebihi batasan rate limit (60 request per menit) | `{"status": "Error", "message": "Too many requests, please try again later."}` |
+| `502 Bad Gateway` | Gagal mengambil data HTML dari server hulu (`v1.komikcast.ac`) | `{"status": "Error", "message": "Failed to fetch manga detail", "error": "..."}` |
+| `500 Internal Server Error` | Terjadi kesalahan internal pada server API | `{"status": "Error", "message": "Internal server error"}` |
 
-Mendefinisikan server Express dengan middleware (helmet, cors, compression, morgan, rate-limit) dan 6 route endpoint. Setiap route menerima query parameter dari client, memanggil fungsi scraper yang sesuai, dan mengembalikan respons JSON.
+---
 
-### `src/scraper.js`
+## Testing
 
-Berisi semua logika scraping. Fungsi utama:
-
-| Fungsi | Deskripsi |
-|--------|-----------|
-| `fetchPage(path)` | Fetch halaman komikcast, ekstrak & parse atribut `data-page` |
-| `mapMangaCard(m)` | Mapping raw manga object dari Inertia ke struktur API yang bersih |
-| `mapChapter(c)` | Mapping raw chapter object dari Inertia ke struktur API |
-| `getMangaList({ page, type, sort, genre })` | Daftar manga dengan filter & pagination |
-| `getMangaDetail(slug)` | Detail manga beserta chapters, rank, dan related mangas |
-| `getChapter(slug, chapterNumber)` | Baca chapter — daftar gambar + navigasi prev/next |
-| `searchManga(query, { page })` | Pencarian manga berdasarkan judul |
-| `getGenres()` | Daftar semua genre |
-
-## Cara Kerja Scraper
-
-Komikcast adalah aplikasi Single Page Application (SPA) yang dibangun dengan Laravel + Inertia.js. Alih-alih merender konten manga sebagai HTML server-side, seluruh data manga dikirim sebagai JSON di dalam atribut `data-page` pada elemen `<div id="app">`.
-
-Proses scraping:
-
-1. **Fetch halaman** — Axios melakukan request GET ke URL komikcast (misal `/manga?type=Manhwa`)
-2. **Parsing HTML** — Cheerio memuat HTML dan mencari elemen `#app`
-3. **Ekstraksi JSON** — Membaca atribut `data-page` yang berisi JSON lengkap
-4. **Mapping data** — Data JSON dipetakan ke struktur respons API yang lebih bersih
-
-```javascript
-const $ = cheerio.load(html);
-const dataPageAttr = $("#app").attr("data-page");
-const pageData = JSON.parse(dataPageAttr);
-// Akses: pageData.props.mangas.data, pageData.props.manga, dll.
-```
-
-Pendekatan ini memberikan keuntungan:
-
-- **Cepat** — tidak perlu menunggu render JavaScript
-- **Tahan perubahan UI** — tidak bergantung pada class CSS atau struktur DOM
-- **Data lengkap** — semua field database tersedia langsung di JSON
-
-## Catatan Pencarian
-
-Endpoint `/search?q=keyword` menerima parameter `q` dari client. Secara internal, scraper meneruskan kata kunci tersebut sebagai parameter `search` ke komikcast.app (`/manga?search=keyword`).
-
-> **Penting:** Komikcast menggunakan nama parameter `search` (bukan `q`) untuk melakukan pencarian manga. Jika parameter `q` digunakan langsung, komikcast akan mengabaikan query pencarian dan mengembalikan daftar manga default (sorted by latest update). Oleh karena itu, API ini melakukan translasi `q` → `search` secara otomatis di dalam `searchManga()`.
-
-## Deployment
-
-### Menjalankan dengan PM2 (Production)
+Proyek ini telah dilengkapi unit test bawaan menggunakan Node.js Test Runner:
 
 ```bash
-# Install PM2 secara global
-npm install -g pm2
-
-# Jalankan server
-pm2 start src/index.js --name komikcast-api
-
-# Simpan & aktifkan saat startup
-pm2 save
-pm2 startup
+npm test
 ```
 
-### Menjalankan dengan Docker
+Menjalankan pengujian:
+- Parsing kartu komik halaman explore
+- Parsing metadata ranking
+- Parsing detail manga dan daftar chapter
+- Parsing reader halaman gambar dan tombol prev/next
+- Logika pagination
+- Ekstraksi slug dan nama genre
 
+---
+
+## Deployment (PM2 & Docker)
+
+### PM2 (Process Manager)
+```bash
+npm install -g pm2
+pm2 start src/index.js --name komikcast-api
+pm2 save
+```
+
+### Docker
 ```dockerfile
 FROM node:22-alpine
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 COPY . .
 EXPOSE 3002
 CMD ["node", "src/index.js"]
 ```
 
+Build dan jalankan:
 ```bash
 docker build -t komikcast-api .
-docker run -p 3002:3002 --name komikcast-api komikcast-api
+docker run -d -p 3002:3002 --name komikcast-api --restart always komikcast-api
 ```
-
-### Environment Variables
-
-| Variable | Default | Deskripsi |
-|----------|---------|-----------|
-| `PORT` | `3002` | Port server |
 
 ---
 
-> **Catatan:** Proyek ini adalah scraper tidak resmi untuk tujuan edukasi. Tidak berafiliasi dengan komikcast.app. Gunakan dengan bijak dan hormati ketentuan layanan situs.
+> **Disclaimer**: Proyek ini merupakan API scraping tidak resmi untuk tujuan pembelajaran dan riset. Seluruh konten komik dan aset gambar adalah hak milik masing-masing penerbit, author, dan situs sumber [v1.komikcast.ac](https://v1.komikcast.ac/).
