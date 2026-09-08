@@ -427,6 +427,7 @@ export async function getMangaList({
   genre,
   status,
   search,
+  q,
 } = {}) {
   const params = new URLSearchParams();
   if (page && Number(page) > 1) params.set("page", String(page));
