@@ -1,5 +1,8 @@
+import dns from "node:dns";
 import axios from "axios";
 import * as cheerio from "cheerio";
+
+dns.setDefaultResultOrder?.("ipv4first");
 
 export const BASE_URL = "https://v1.komikcast.ac";
 
@@ -436,7 +439,8 @@ export async function getMangaList({
     const genreParam = Array.isArray(genre) ? genre.join(",") : genre;
     params.set("genre", genreParam);
   }
-  if (search) params.set("search", search);
+  const searchQuery = search || q;
+  if (searchQuery) params.set("q", searchQuery);
 
   const queryStr = params.toString();
   const path = `/explore${queryStr ? `?${queryStr}` : ""}`;
@@ -517,7 +521,62 @@ export async function getChapter(mangaSlug, chapterIdentifier) {
 }
 
 export async function searchManga(query, options = {}) {
-  return getMangaList({ ...options, search: query });
+  const q = String(query || "").trim();
+  if (!q) {
+    return {
+      status: "Ok",
+      data: {
+        mangas: [],
+        pagination: { current_page: 1, last_page: 1, has_next: false, next_page: null, has_prev: false, prev_page: null },
+        filters: { page: 1, search: "", q: "" },
+      },
+    };
+  }
+
+  const params = new URLSearchParams();
+  if (options.page && Number(options.page) > 1) {
+    params.set("page", String(options.page));
+  }
+  params.set("q", q);
+
+  let html;
+  try {
+    html = await fetchHtml(`/search?${params.toString()}`);
+  } catch {
+    html = await fetchHtml(`/explore?${params.toString()}`);
+  }
+
+  const $ = cheerio.load(html);
+  const mangas = parseMangaCards(html);
+
+  // Sort by relevance to query
+  const qLower = q.toLowerCase();
+  mangas.sort((a, b) => {
+    const aTitle = (a.title || "").toLowerCase();
+    const bTitle = (b.title || "").toLowerCase();
+    const aExact = aTitle === qLower ? 1 : 0;
+    const bExact = bTitle === qLower ? 1 : 0;
+    if (aExact !== bExact) return bExact - aExact;
+
+    const aStarts = aTitle.startsWith(qLower) ? 1 : 0;
+    const bStarts = bTitle.startsWith(qLower) ? 1 : 0;
+    if (aStarts !== bStarts) return bStarts - aStarts;
+
+    return 0;
+  });
+
+  return {
+    status: "Ok",
+    data: {
+      mangas,
+      pagination: parsePagination($, Number(options.page) || 1),
+      filters: {
+        page: Number(options.page) || 1,
+        search: q,
+        q,
+      },
+    },
+  };
 }
 
 export async function getGenres() {

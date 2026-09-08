@@ -1,5 +1,9 @@
+import dns from "node:dns";
+import fs from "node:fs";
 import express from "express";
 import cors from "cors";
+
+dns.setDefaultResultOrder?.("ipv4first");
 import helmet from "helmet";
 import morgan from "morgan";
 import compression from "compression";
@@ -22,6 +26,14 @@ app.use(compression());
 app.use(cors());
 app.use(express.json());
 app.use(morgan("combined"));
+
+app.use((req, res, next) => {
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  try {
+    fs.appendFileSync("requests.log", `[${new Date().toISOString()}] ${req.method} ${req.originalUrl || req.url}\n`);
+  } catch {}
+  next();
+});
 
 const limiter = rateLimit({
   windowMs: 60 * 1000,
@@ -83,6 +95,7 @@ async function handleMangaList(req, res) {
       genre: genre || undefined,
       status: status || undefined,
       search: search || q || undefined,
+      q: q || search || undefined,
     });
     res.json(result);
   } catch (err) {
