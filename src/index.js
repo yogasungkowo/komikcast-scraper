@@ -50,7 +50,7 @@ app.use(limiter);
 app.get("/", (req, res) => {
   res.json({
     status: "Ok",
-    message: "Komikcast API (v1.komikcast.ac)",
+    message: "Komikcast API (komikcast.app)",
     source: BASE_URL,
     endpoints: {
       "GET /explore":
